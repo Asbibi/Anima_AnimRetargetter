@@ -26,7 +26,7 @@ class AAR_OT_LabelBone(Operator):
 
 
 	def execute(self, context):
-		bone_groups = context.object.pose.bone_groups		
+		bone_groups = context.object.pose.bone_groups
 		#self.report({'WARNING'}, self.aar_group)
 		
 		if not(self.aar_group in bone_groups):

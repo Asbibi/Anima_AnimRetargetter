@@ -25,17 +25,21 @@ bl_info = {
 
 
 import bpy
+from . aar_properties import AAR_ActionListProperty, AAR_RegisterProps, AAR_DelProps
 from . aar_labelOperator import AAR_OT_LabelBone, AAR_OT_UnlabelBone
+from . aar_actionOperator import AAR_OT_RegisterAction, AAR_OT_UnregisterAction, AAR_OT_UnregisterAllActions
 from . aar_panel import AAR_PT_Panel
 
-classes = (AAR_OT_LabelBone, AAR_OT_UnlabelBone, AAR_PT_Panel)
+classes = (AAR_ActionListProperty, AAR_OT_LabelBone, AAR_OT_UnlabelBone, AAR_OT_RegisterAction, AAR_OT_UnregisterAction, AAR_OT_UnregisterAllActions, AAR_PT_Panel)
+
 
 
 def register():
-    bpy.types.Armature.aar_source = bpy.props.PointerProperty(type=bpy.types.Armature)
     for c in classes:
         bpy.utils.register_class(c)
+    AAR_RegisterProps()
 
 def unregister():
-	for c in classes:
-		bpy.utils.unregister_class(c)
+    AAR_DelProps()
+    for c in classes:
+        bpy.utils.unregister_class(c)
