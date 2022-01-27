@@ -25,12 +25,25 @@ bl_info = {
 
 
 import bpy
-from . aar_properties import AAR_ActionListProperty, AAR_RegisterProps, AAR_DelProps
-from . aar_labelOperator import AAR_OT_LabelBone, AAR_OT_UnlabelBone
+from . aar_properties import AAR_PROP_ActionListProperty, AAR_RegisterProps, AAR_DelProps
+from . aar_labelOperator import AAR_PROP_GroupNameListProperty, AAR_OT_LabelBone, AAR_OT_UnlabelBone, AAR_OT_UnlabelBoneAll, AAR_OT_AutoLabel
 from . aar_actionOperator import AAR_OT_RegisterAction, AAR_OT_UnregisterAction, AAR_OT_UnregisterAllActions
+from . aar_retargetOperator import AAR_OT_CheckLabels, AAR_OT_CheckSourceLabels, AAR_OT_Retarget
 from . aar_panel import AAR_PT_Panel
 
-classes = (AAR_ActionListProperty, AAR_OT_LabelBone, AAR_OT_UnlabelBone, AAR_OT_RegisterAction, AAR_OT_UnregisterAction, AAR_OT_UnregisterAllActions, AAR_PT_Panel)
+classes = (AAR_PROP_ActionListProperty,
+            AAR_PROP_GroupNameListProperty,
+            AAR_OT_LabelBone,
+            AAR_OT_UnlabelBone,
+            AAR_OT_UnlabelBoneAll,
+            AAR_OT_AutoLabel,
+            AAR_OT_RegisterAction,
+            AAR_OT_UnregisterAction,
+            AAR_OT_UnregisterAllActions,
+            AAR_OT_CheckLabels,
+            AAR_OT_CheckSourceLabels,
+            AAR_OT_Retarget,
+            AAR_PT_Panel)
 
 
 

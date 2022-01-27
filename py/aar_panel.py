@@ -6,8 +6,8 @@ from bpy.types import Panel
 def actionLayout(subBox, action):
     row = subBox.row()
     row.label(text=action.name, icon="ACTION")
-    row.prop(action, "aar_loopIdle", text="")
-    row.prop(action, "aar_useGround", text="")
+    row.prop(action, "aar_loopIdle", text="", icon="POSE_HLT")
+    row.prop(action, "aar_useGround", text="", icon="GRID")
     op = row.operator("pose.aar_unregister_action", text="", icon="PANEL_CLOSE")
     op.aar_action = action.name
     
@@ -35,9 +35,15 @@ class AAR_PT_Panel(Panel):
         label_select = [[0.75,0.75,0.75],[0.75,0.75,0.75],[0.75,0.75,0.75],[0.75,0.75,0.75],[0.75,0.75,0.75],[0.75,0.75,0.75],[0.75,0.75,0.75],[0.75,0.75,0.75],[0.75,0.75,0.75],[0.75,0.75,0.75],[0.75,0.75,0.75]]
         label_active = [[1,1,1],[1,1,1],[1,1,1],[1,1,1],[1,1,1],[1,1,1],[1,1,1],[1,1,1],[1,1,1],[1,1,1],[1,1,1]]
         
+        
         layout = self.layout
-        layout.prop(context.object.data, "aar_source", text="Source")
-        #layout.prop_search(context.object.data, "aar_source", bpy.data, "armatures", text="Source")
+        layout.label(text="Source")
+        row = layout.row()
+        row.prop(context.object.data, "aar_source", text="")
+        row.operator("pose.aar_check_source_labels", text="Check Source Labels", icon="CHECKMARK")
+        
+        
+        #########################################################
         
         
         layout.separator()
@@ -48,7 +54,6 @@ class AAR_PT_Panel(Panel):
                 continue
             subBox = box.box()
             actionLayout(subBox, act.actionProp)
-
             
         row = layout.row()
         col = row.column()
@@ -58,6 +63,8 @@ class AAR_PT_Panel(Panel):
         col.operator("pose.aar_register_action", text="Add Action", icon="ADD")
         col.operator("pose.aar_unregister_actions", text="Clear All", icon="PANEL_CLOSE")
         
+        
+        #########################################################
         
         
         layout.separator()
@@ -78,6 +85,28 @@ class AAR_PT_Panel(Panel):
             col = row.column()
             op = col.operator("pose.aar_unlabel_bone", text="Unlabel", icon="REMOVE")
             op.aar_group = "AAR_" + label_name[i]
+        
+        row = layout.row()
+        op_auto = row.operator("pose.aar_auto_label", text="Auto-Label", icon="PRESET")
+        op_uAll = row.operator("pose.aar_unlabel_bones_all", text="Unlabel All Groups", icon="PANEL_CLOSE")
+        for label in label_name:
+            text = "AAR_" + label
+            group_auto = op_auto.aar_groups.add()
+            group_auto.groupName = text
+            group_uAll = op_uAll.aar_groups.add()
+            group_uAll.groupName = text
+        
+        
+        
+        #########################################################
+        
+        
+        layout.separator()
+        layout.label(text="Retarget")
+        col = layout.column()        
+        col.operator("pose.aar_check_labels", text="Check Object Labels", icon="CHECKMARK")
+        col.operator("pose.aar_retarget", text="Retarget", icon="IMPORT")
+        
         
         
 

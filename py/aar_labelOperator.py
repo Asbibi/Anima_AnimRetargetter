@@ -1,7 +1,5 @@
 import bpy
 from bpy.types import Operator
-from bpy.props import (StringProperty, FloatVectorProperty)
-
 
 
 class AAR_OT_LabelBone(Operator):
@@ -46,6 +44,7 @@ class AAR_OT_LabelBone(Operator):
 				break
 		bpy.ops.pose.group_assign(type = groupIndex + 1)
 		
+		context.object.data.aar_labelChecked = False;
 		return {'FINISHED'}
 
 
@@ -54,8 +53,8 @@ class AAR_OT_LabelBone(Operator):
 
 class AAR_OT_UnlabelBone(Operator):
 	bl_idname = "pose.aar_unlabel_bone"
-	bl_label = "Unlabel A Bone"
-	bl_description = "Unlabel a bone by removing it from the dedicated Bone Group"
+	bl_label = "Unlabel selected Bones"
+	bl_description = "Unlabel selected bones by removing them from the dedicated Bone Group"
 	
 	aar_group : bpy.props.StringProperty(default="AAR_Base")
 	
@@ -81,14 +80,82 @@ class AAR_OT_UnlabelBone(Operator):
 			if bone.bone_group == group:
 				bone.bone_group = None
 		
+		context.object.data.aar_labelChecked = False;
+		return {'FINISHED'}
+	
+	
+	
+	
+	
+	
+class AAR_PROP_GroupNameListProperty(bpy.types.PropertyGroup):
+    groupName : bpy.props.StringProperty(default="AAR_Base")
+	
+	
+class AAR_OT_UnlabelBoneAll(Operator):
+	bl_idname = "pose.aar_unlabel_bones_all"
+	bl_label = "Unlabel selected Bones from All"
+	bl_description = "Unlabel selected bones by removing them from all the Label Bone Groups"
+	
+	aar_groups : bpy.props.CollectionProperty(type=AAR_PROP_GroupNameListProperty)
+	
+
+	@classmethod
+	def poll(cls, context):
+		obj = context.object
+		if obj is not None:
+			if obj.mode == "POSE":
+				if len(context.selected_pose_bones) > 0:
+					return True
+		return False
+
+
+	def execute(self, context):
+		all_bone_groups = context.object.pose.bone_groups
+		my_bone_groups = []
+		for groupName_prop in self.aar_groups:
+			if groupName_prop.groupName in all_bone_groups:
+				my_bone_groups.append(all_bone_groups[groupName_prop.groupName])
+		
+		selectedBones = context.selected_pose_bones
+		for bone in selectedBones:
+			if bone.bone_group in my_bone_groups:
+				bone.bone_group = None
+		
+		context.object.data.aar_labelChecked = False;
 		return {'FINISHED'}
 
+
+
+
+class AAR_OT_AutoLabel(Operator):
+	bl_idname = "pose.aar_auto_label"
+	bl_label = "Auto-Label Armature"
+	bl_description = "Auto-Label an armature's bones"
 	
+	aar_groups : bpy.props.CollectionProperty(type=AAR_PROP_GroupNameListProperty)
+	
+
+	@classmethod
+	def poll(cls, context):
+		obj = context.object
+		if obj is not None:
+			if obj.type == "ARMATURE":
+				return True
+		return False
+
+
+	def execute(self, context):
+		self.report({'WARNING'}, "TODO - Not implemented yet")
+		return {'FINISHED'}
 	
 
 
 
 
 if __name__ == "__main__":
+	bpy.utils.register_class(AAR_PROP_GroupNameListProperty)
 	bpy.utils.register_class(AAR_OT_LabelBone)
 	bpy.utils.register_class(AAR_OT_UnlabelBone)
+	bpy.utils.register_class(AAR_OT_UnlabelBoneAll)
+	bpy.utils.register_class(AAR_OT_AutoLabel)
