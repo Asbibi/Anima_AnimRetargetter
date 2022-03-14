@@ -25,13 +25,18 @@ bl_info = {
 
 
 import bpy
-from . aar_properties import AAR_PROP_ActionListProperty, AAR_RegisterProps, AAR_DelProps
-from . aar_labelOperator import AAR_PROP_GroupNameListProperty, AAR_OT_LabelBone, AAR_OT_UnlabelBone, AAR_OT_UnlabelBoneAll, AAR_OT_AutoLabel
-from . aar_actionOperator import AAR_OT_RegisterAction, AAR_OT_UnregisterAction, AAR_OT_UnregisterAllActions
-from . aar_retargetOperator import AAR_OT_CheckLabels, AAR_OT_CheckSourceLabels, AAR_OT_Retarget
-from . aar_panel import AAR_PT_Panel
+from . aar_properties import *
+from . aar_labelOperator import *
+from . aar_actionOperator import *
+from . aar_retargetOperator import *
+from . aar_panel import *
 
 classes = (AAR_PROP_ActionListProperty,
+            AAR_PROP_SingleBoneProperty,
+            AAR_PROP_MemberProperty,
+            AAR_PROP_Quaternion,
+            AAR_PROP_SingleBoneLink,
+            AAR_PROP_MemberLink,
             AAR_PROP_GroupNameListProperty,
             AAR_OT_LabelBone,
             AAR_OT_UnlabelBone,
@@ -42,6 +47,7 @@ classes = (AAR_PROP_ActionListProperty,
             AAR_OT_UnregisterAllActions,
             AAR_OT_CheckLabels,
             AAR_OT_CheckSourceLabels,
+            AAR_OT_LinkArmatures,
             AAR_OT_Retarget,
             AAR_PT_Panel)
 

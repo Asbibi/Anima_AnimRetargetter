@@ -1,8 +1,15 @@
 import bpy
+#import mathutils
+#import math
 from bpy.types import Operator
+from math import sqrt
+from math import degrees as deg
+from mathutils import Quaternion as quat
+from mathutils import Vector as vect
 
 
 
+# Debug, not used
 def print_StrList(self, strList):
     List = "["
     for n in strList:
@@ -10,22 +17,105 @@ def print_StrList(self, strList):
     List += "]"
     self.report({'INFO'}, List)
 
+# Actually Used
+def norm(vector):
+    return sqrt(vector[0]*vector[0] + vector[1]*vector[1] + vector[2]*vector[2])
 
-def checkStart_End(self, member, member_end_List, member_start_List, member_start_group, pose_bones, armature_bones, base_bone_name):          # returns if the check failed (=> False if everything is ok)
+
+# ==============================================================================================================
+
+
+
+def checkStart_End(self, obj, member, member_end_List, member_start_List, member_start_group, pose_bones, armature_bones, base_bone_name, memberCollectionProperty):          # returns if the check failed (=> False if everything is ok)
+    memberCollectionProperty.clear()
+
     for end_bone_name in member_end_List:
+        original_end_bone_name = end_bone_name
+        # ---------- Check Constraints -----------
+        checkingConstraints = True        
+        while checkingConstraints:
+            checkingConstraints = False
+            curConstraints = pose_bones[end_bone_name].constraints
+            if len(curConstraints) == 0:
+                checkingConstraints = False
+                
+            for c in reversed(curConstraints):
+                if c.type == "COPY_LOCATION":
+                    if obj is not c.target:
+                        self.report({'ERROR'}, member + " Bone '" + end_bone_name + "' has a 'COPY_LOCATION' constraint that has an incorrect Target.\nSet the target to a " + obj.name + "'s bone.")
+                        return True
+                    else:
+                        if c.subtarget == "":
+                            self.report({'ERROR'}, member + " Bone '" + end_bone_name + "' has a 'COPY_LOCATION' constraint that has an incorrect Target.\nSet the target to a " + obj.name + "'s bone.")
+                            return True
+                        end_bone_name = c.subtarget
+                        self.report({'WARNING'}, end_bone_name)
+                        checkingConstraints = True
+                        break
+                    
+        checkingIKController = False
+        cont_bone_name = end_bone_name
+        pole_bone_name = ""
+        curConstraints = pose_bones[end_bone_name].constraints
+        for c in reversed(curConstraints):
+            if c.type == "IK":
+                if obj is not c.target:
+                    self.report({'ERROR'}, member + " Bone '" + end_bone_name + "' has a 'IK' constraint that has an incorrect Target.\nSet the target to a " + obj.name + "'s bone.")
+                    return True
+                else:
+                    if c.subtarget == "":
+                        self.report({'ERROR'}, member + " Bone '" + end_bone_name + "' has a 'IK' constraint that has an incorrect Target.\nSet the target to a " + obj.name + "'s bone.")
+                        return True
+                    cont_bone_name = c.subtarget
+                    #self.report({'WARNING'}, cont_bone_name)
+                    checkingIKController = True
+                    if obj is c.pole_target:
+                        pole_bone_name = c.pole_subtarget                    
+                    break        
+                
+        while checkingIKController:
+            checkingIKController = False
+            curConstraints = pose_bones[cont_bone_name].constraints
+            if len(curConstraints) == 0:
+                checkingIKController = False
+                
+            for c in reversed(curConstraints):
+                if c.type == "COPY_LOCATION":
+                    if obj is not c.target:
+                        self.report({'ERROR'}, member + " Bone Controller '" + cont_bone_name + "' has a 'COPY_LOCATION' constraint that has an incorrect Target.\nSet the target to a " + obj.name + "'s bone.")
+                        return True
+                    else:
+                        if c.subtarget == "":
+                            self.report({'ERROR'}, member + " Bone Controller '" + cont_bone_name + "' has a 'COPY_LOCATION' constraint that has an incorrect Target.\nSet the target to a " + obj.name + "'s bone.")
+                            return True
+                        cont_bone_name = c.subtarget
+                        #self.report({'WARNING'}, cont_bone_name)
+                        checkingIKController = True
+                        break
+                
+            
+            
+        
+        # --------------- Prepare ----------------
         start_bone_name = ""
         curBone = pose_bones[end_bone_name]
-        searchingStart = member_start_group is not None
+        searchingStart = True
+        groupStartExists = member_start_group is not None
         searchingBase = True
+        numberBone_EndExcluded = 0
+        memberLenght = curBone.length
         
         # --------------- Searching ----------------
         while curBone.parent is not None:
             curBone = curBone.parent
-            if searchingStart:
-                if curBone.bone_group == member_start_group:
-                    start_bone_name = curBone.name
-                    searchingStart = False
-                    continue
+            if groupStartExists:
+                if searchingStart:
+                    numberBone_EndExcluded += 1
+                    memberLenght += curBone.length
+                    if curBone.bone_group == member_start_group:
+                        start_bone_name = curBone.name
+                        searchingStart = False
+                        continue
             if curBone.name == base_bone_name:
                 searchingBase = False
                 break
@@ -33,7 +123,7 @@ def checkStart_End(self, member, member_end_List, member_start_List, member_star
         # ---------------- Checking ----------------
         # Base bone Check
         if searchingBase:
-            self.report({'ERROR'}, member + " Bone '" + end_bone_name + "' is not a child of the Base bone '" + base_bone_name + "'.")            
+            self.report({'ERROR'}, member + " Bone '" + end_bone_name + "' is not a child of the Base bone '" + base_bone_name + "'.")
             return True
         
         # Start not already used Check
@@ -48,10 +138,103 @@ def checkStart_End(self, member, member_end_List, member_start_List, member_star
             self.report({'ERROR'}, member + " Start bone '" + start_bone_Final_name + "' must not be connected to a parent.\nEither use 'Keep Offset' or no parent.")
             return True
         
-        member_start_List.append(None if searchingStart else start_bone_name)
-    
+        # Update array to ensure the not already used check
+        if not searchingStart:
+            member_start_List.append(start_bone_name)
+            
+        # Compute the member lenght
+        start_pos = start_bone_Final.tail_local
+        end_pos = armature_bones[end_bone_name].tail_local
+        memberVector = end_pos - start_pos
+        
+                
+        # Add Result to Data's Collection Property
+        memberProp = memberCollectionProperty.add()
+        memberProp.hasIK = (not searchingStart) and (cont_bone_name != end_bone_name)
+        memberProp.originBone = end_bone_name if searchingStart else start_bone_name
+        memberProp.finalBone = original_end_bone_name
+        memberProp.IK_controllerBone = cont_bone_name if memberProp.hasIK else ""
+        memberProp.IK_poleBone = pole_bone_name
+        memberProp.memberOrigin = start_pos
+        memberProp.memberVector = memberVector
+        memberProp.memberLenght = memberLenght   #norm(memberVector)
+        memberProp.numberBone = numberBone_EndExcluded
+        memberProp.finalBoneOrientation = armature_bones[memberProp.finalBone].vector.normalized()
+        if not searchingStart:
+            memberProp.originBoneOrientation = armature_bones[memberProp.originBone].vector.normalized()
+        if memberProp.hasIK:
+            memberProp.IK_contBoneOrientation = armature_bones[memberProp.IK_controllerBone].vector.normalized()
+            
+#        self.report({'INFO'}, "IK: " + str(memberProp.hasIK))
+#        self.report({'INFO'}, "Origin:  " + memberProp.originBone)
+#        self.report({'INFO'}, "Final:   " + memberProp.finalBone)
+#        self.report({'INFO'}, "Cont IK: " + memberProp.IK_controllerBone)
+        #self.report({'INFO'}, "Orient Ot: [%.3f, %.3f, %.3f]" % (memberProp.finalBoneOrientation[0],memberProp.finalBoneOrientation[1],memberProp.finalBoneOrientation[2]))
+        #self.report({'INFO'}, "Orient Ot: [%.3f, %.3f, %.3f]" % (memberProp.finalBoneOrientation[0],memberProp.finalBoneOrientation[1],memberProp.finalBoneOrientation[2]))
+        #self.report({'INFO'}, "Orient Ot: [%.3f, %.3f, %.3f]" % (memberProp.finalBoneOrientation[0],memberProp.finalBoneOrientation[1],memberProp.finalBoneOrientation[2]))
+        
+        #self.report({'INFO'}, "Orientation norm: " + end_bone_name + " - " + str(norm(memberProp.finalBoneOrientation)))
+        #self.report({'INFO'}, "Origin of " + memberProp.originBone + ": [" + str(memberProp.memberOrigin[0]) + ", " + str(memberProp.memberOrigin[1]) + ", " + str(memberProp.memberOrigin[2]) + "]" )
     return False
 
+
+
+def checkHeads_Necks(self, armature, bones, head_Group, neck_Group, base_bone_name, head_Names, neck_Names):
+    # Check neck is related to base
+    for neck in neck_Names:
+        curBone = bones[neck]
+        searchingBase = True
+        while (curBone.parent is not None) and (searchingBase):
+            curBone = curBone.parent
+            if curBone.name == base_bone_name:
+               searchingBase = False
+        if searchingBase:
+            self.report({'ERROR'}, "Neck Bone '" + neck + "' isn't parented to Base Bone '" + base_bone_name + "'.")
+            return True
+        
+        
+    # Check head is related to base && if related to a neck
+    neck_Checked = [False for i in range(len(neck_Names))] 
+    for head in head_Names:
+        curBone = bones[head]
+        searchingBase = True
+        while (curBone.parent is not None) and (searchingBase):
+            curBone = curBone.parent
+            if curBone.name == base_bone_name:
+               searchingBase = False
+               break
+            for i in range(len(neck_Names)):
+               if curBone.name == neck_Names[i]:
+                   neck_Checked[i] = True
+                   break
+               
+        if searchingBase:
+            self.report({'ERROR'}, "Head Bone '" + head + "' isn't parented to Base Bone '" + base_bone_name + "'.")
+            return True
+            
+        
+    # Check every neck is related to an head
+    for i in range(len(neck_Names)):
+        if not neck_Checked[i]:
+            self.report({'ERROR'}, "Neck Bone '" + neck_Names[i] + "' isn't the parent of any Head bone.")
+            return True
+
+
+    # Actually add Head & neck to armature properties
+    armature.aar_necks.clear()
+    armature.aar_heads.clear()
+    
+    for neck in neck_Names:
+        n_prop = armature.aar_necks.add()
+        n_prop.string = neck
+        n_prop.position = bones[neck].tail_local
+        
+    for head in head_Names:
+        n_prop = armature.aar_heads.add()
+        n_prop.string = head
+        n_prop.position = bones[head].tail_local
+        
+        
 
 
 def checkArmatureLabels(self, obj):
@@ -88,9 +271,12 @@ def checkArmatureLabels(self, obj):
     # --------------- Hierarchy Loop ---------------
     for b in pose_bones:
         
+        if b.bone_group is None:
+            continue
+        
         # ---------------- Get Base ----------------
         
-        if b.bone_group == base_Group:
+        elif b.bone_group == base_Group:
             if not base_found:
                 base_Name = b.name
                 base_found = True
@@ -116,44 +302,53 @@ def checkArmatureLabels(self, obj):
         
     
     # ----------------- Check Base -----------------
+    # Base found ?
     if not base_found:
         self.report({'ERROR'}, "No bone labelled as Base.\nThere must be one and only one Base bone.")
         obj.data.aar_labelChecked = False
-        return;
+        return
+    # Has a parent ?
     elif (armature.bones[base_Name].parent is not None) & (armature.bones[base_Name].use_connect):
         self.report({'ERROR'}, "Base bone must not be connected to a parent.\nEither use 'Keep Offset' or no parent.")
         obj.data.aar_labelChecked = False
-        return;
+        return
+    # Has a constraint ?
+    elif len(pose_bones[base_Name].constraints) != 0:
+        self.report({'WARNING'}, "Base bone shouldn't be have any Bone Constraint.")
+        
     # save base bone name
+    bpy.types.Armature.aar_baseBone = base_Name
     # ----------------------------------------------
     
-    # save head bone name if exists
-    # save neck bone name if exists
     
+    # ------------ Check Heads & Necks -------------
+    if checkHeads_Necks(self, armature, armature.bones, head_Group, neck_Group, base_Name, head_Names, neck_Names):
+        obj.data.aar_labelChecked = False
+        return
     
     # ----------------- Check Arm ------------------
-    arm_Names_S = []
-    if checkStart_End(self, "Arm", arm_Names, arm_Names_S, bone_groups["AAR_Arm Start"] if "AAR_Arm Start" in bone_groups else None, pose_bones, armature.bones, base_Name):
+    arm_Names_Combine = []
+    if checkStart_End(self, obj, "Arm", arm_Names, arm_Names_Combine, bone_groups["AAR_Arm Start"] if "AAR_Arm Start" in bone_groups else None, pose_bones, armature.bones, base_Name, armature.aar_arms):
         obj.data.aar_labelChecked = False
-        return;
+        return
     
     # ----------------- Check Leg ------------------
-    leg_Names_S = []
-    if checkStart_End(self, "Leg", leg_Names, leg_Names_S, bone_groups["AAR_Leg Start"] if "AAR_Leg Start" in bone_groups else None, pose_bones, armature.bones, base_Name):
+    leg_Names_Combine = []
+    if checkStart_End(self, obj, "Leg", leg_Names, leg_Names_Combine, bone_groups["AAR_Leg Start"] if "AAR_Leg Start" in bone_groups else None, pose_bones, armature.bones, base_Name, armature.aar_legs):
         obj.data.aar_labelChecked = False
-        return;
+        return
     
     # ----------------- Check Wing -----------------
-    wing_Names_S = []
-    if checkStart_End(self, "Wing", wing_Names, wing_Names_S, bone_groups["AAR_Wing Start"] if "AAR_Wing Start" in bone_groups else None, pose_bones, armature.bones, base_Name):
+    wing_Names_Combine = []
+    if checkStart_End(self, obj, "Wing", wing_Names, wing_Names_Combine, bone_groups["AAR_Wing Start"] if "AAR_Wing Start" in bone_groups else None, pose_bones, armature.bones, base_Name, armature.aar_wings):
         obj.data.aar_labelChecked = False
-        return;
+        return
     
     # ----------------- Check Tail -----------------
-    tail_Names_S = []
-    if checkStart_End(self, "Tail", tail_Names, tail_Names_S, bone_groups["AAR_Tail Start"] if "AAR_Tail Start" in bone_groups else None, pose_bones, armature.bones, base_Name):
+    tail_Names_Combine = []
+    if checkStart_End(self, obj, "Tail", tail_Names, tail_Names_Combine, bone_groups["AAR_Tail Start"] if "AAR_Tail Start" in bone_groups else None, pose_bones, armature.bones, base_Name, armature.aar_tails):
         obj.data.aar_labelChecked = False
-        return;
+        return
     
 
     # ----------------------------------------------
@@ -162,8 +357,296 @@ def checkArmatureLabels(self, obj):
     obj.data.aar_labelChecked = True
     
     
+
+
+# ==============================================================================================================
+
+
+def linkArmatureMembers(self, myMembers, otherMembers, memberLinks):
+    memberLinks.clear()
+    if len(myMembers) == 0:
+        return
+    
+    if len(otherMembers) == 0:
+        self.report({'WARNING'}, "No members on the source armature corresponding to that Category --> Skipped")
+        return
+            
+    
+    for i in range(len(myMembers)):
+        best_other = 0
+        best_offset = [myMembers[i].memberOrigin[0] - otherMembers[0].memberOrigin[0], myMembers[i].memberOrigin[1] - otherMembers[0].memberOrigin[1], myMembers[i].memberOrigin[2] - otherMembers[0].memberOrigin[2]]
+        best_dist = norm(best_offset)
+        best_quat = quat()
+        for j in range(0, len(otherMembers)):
+            offsetVector = [myMembers[i].memberOrigin[0] - otherMembers[j].memberOrigin[0], myMembers[i].memberOrigin[1] - otherMembers[j].memberOrigin[1], myMembers[i].memberOrigin[2] - otherMembers[j].memberOrigin[2]]
+            dist = norm(offsetVector)
+            if dist < best_dist:
+                best_dist = dist
+                best_other = j
+                best_offset = offsetVector
+                
+        
+        link = memberLinks.add()
+        link.myMember_ID = i
+        link.otherMember_ID = best_other
+        link.offsetVector = best_offset
+        
+
+
+def linkArmatureSingleBones(self, myLabels, otherLabels, labelLinks):
+    labelLinks.clear()
+    if len(myLabels) == 0:
+        return
+    
+    if len(otherLabels) == 0:
+        self.report({'WARNING'}, "No members on the source armature corresponding to that Category --> Skipped")
+        return
+            
+    
+    for i in range(len(myLabels)):
+        my_l = myLabels[i]
+        best_other = 0
+        offset = vect((my_l.position[0] - otherLabels[0].position[0], my_l.position[1] - otherLabels[0].position[1], my_l.position[2] - otherLabels[0].position[2]))
+        best_dist = norm(offset)
+        for j in range(0, len(otherLabels)):
+            other_l = otherLabels[j]
+            offset = vect((my_l.position[0] - other_l.position[0], my_l.position[1] - other_l.position[1], my_l.position[2] - other_l.position[2]))
+            dist = norm(offset)
+            if dist < best_dist:
+                best_dist = dist
+                best_other = j                
+        
+        link = labelLinks.add()
+        link.myMember_ID = i
+        link.otherMember_ID = best_other
+        
+            
+
+# ==============================================================================================================
+
+
+
+def getDataPath_FCU(boneName, type):
+    return "pose.bones[\"" + boneName + "\"]." + type
+
+
+def retargetLoc(my_action, other_action, my_mBone, other_mBone, offset, proportionalFactor):
+    my_mDataPath = getDataPath_FCU(my_mBone, "location")
+    other_mDataPath = getDataPath_FCU(other_mBone, "location")
+    
+    for axis in range(0,3):
+        other_fcu = other_action.fcurves.find(data_path=other_mDataPath, index=axis)        
+        if other_fcu is None:
+            continue
+        
+        my_fcu = my_action.fcurves.new(data_path=my_mDataPath, index=axis, action_group=my_mBone)
+        for kp in other_fcu.keyframe_points:
+            my_fcu.keyframe_points.insert(kp.co[0], offset[axis] + kp.co[1] * proportionalFactor)
+            
+
+#def retargetLoc_reprop(my_action, other_action, my_mBone, other_mBone, offset, proportionalFactor, myOrigin, otherOrigin):
+#    my_mDataPath = getDataPath_FCU(my_mBone, "location")
+#    other_mDataPath = getDataPath_FCU(other_mBone, "location")
+#    
+#    for axis in range(0,3):
+#        other_fcu = other_action.fcurves.find(data_path=other_mDataPath, index=axis)        
+#        if other_fcu is None:
+#            continue
+#        
+#        my_fcu = my_action.fcurves.new(data_path=my_mDataPath, index=axis, action_group=my_mBone)
+#        for kp in other_fcu.keyframe_points:
+#            my_fcu.keyframe_points.insert(kp.co[0], offset[axis] + proportionalFactor * (kp.co[1] - otherOrigin[axis]) + myOrigin[axis])
+
+            
+def retargetRot_Euler(my_action, other_action, my_mBone, other_mBone, offset):
+    my_mDataPath = getDataPath_FCU(my_mBone, "rotation_euler")
+    other_mDataPath = getDataPath_FCU(other_mBone, "rotation_euler")
+    
+    for axis in range(0,3):
+        other_fcu = other_action.fcurves.find(data_path=other_mDataPath, index=axis)        
+        if other_fcu is None:
+            continue
+        
+        my_fcu = my_action.fcurves.new(data_path=my_mDataPath, index=axis, action_group=my_mBone)
+        for kp in other_fcu.keyframe_points:
+            my_fcu.keyframe_points.insert(kp.co[0], deg(offset[axis]) + kp.co[1])
+            
+            
+def retargetRot_Quat(my_action, other_action, my_mBone, other_mBone, offset):
+    my_mDataPath = getDataPath_FCU(my_mBone, "rotation_quaternion")
+    other_mDataPath = getDataPath_FCU(other_mBone, "rotation_quaternion")
+    q_identity = [1,0,0,0]
+    
+    # Get original FCurves
+    other_fcus = []    
+    for axis in range(0,4):
+        other_fcus.append(other_action.fcurves.find(data_path=other_mDataPath, index=axis))
+    
+    # Get frames
+    frames = []
+    for other_fcu in other_fcus:
+        if other_fcu is None:
+            continue
+        
+        for kp in other_fcu.keyframe_points:
+            if not(kp.co[0] in frames) :
+                frames.append(kp.co[0])
+                
+    # Get Quats
+    quatValues = []
+    for f in frames:
+        q = []
+        for axis in range(0,4):
+            if other_fcus[axis] is None:
+                q.append(q_identity[axis])
+            else:
+                q.append(other_fcus[axis].evaluate(f))
+        quatValues.append(quat((q[0],q[1],q[2],q[3])))
+                
+    # Offset Quats
+    for i in range(len(quatValues)):     
+        quatValues[i].rotate(offset)        
+        
+    # Set new keyframes
+    for axis in range(0,4):
+        if other_fcus[axis] is None:
+            continue
+        
+        my_fcu = my_action.fcurves.new(data_path=my_mDataPath, index=axis, action_group=my_mBone)
+        for i in range(len(frames)):            
+            my_fcu.keyframe_points.insert(frames[i], quatValues[i][axis])
+
+
+def retargetRot(my_action, other_action, my_mBone, other_mBone, offset):
+    retargetRot_Quat(my_action, other_action, my_mBone, other_mBone, offset)
+    retargetRot_Euler(my_action, other_action, my_mBone, other_mBone, offset.to_euler())
     
     
+def getLocationOffset(pointToRotate, rotationPivot, rotationQuat):
+    v = pointToRotate - rotationPivot
+    v.rotate(rotationQuat)
+    return v + rotationPivot
+    
+def getRotationOffset(fromOrientation, toOrientation):
+    frO_Vect = vect((fromOrientation[0], fromOrientation[1], fromOrientation[2]))
+    toO_Vect = vect((toOrientation[0], toOrientation[1], toOrientation[2]))    
+    return frO_Vect.rotation_difference(toO_Vect)
+
+
+
+def retargetMember(self, action_ret, action_src, myArmature_pBones, otherArmature_pBones, myArmature_members, otherArmature_members, memberLinks):
+    for mLink in memberLinks:
+        my_m = myArmature_members[mLink.myMember_ID]
+        other_m = otherArmature_members[mLink.otherMember_ID]
+        
+        v = myArmature_pBones[my_m.finalBone].tail
+        self.report({'INFO'}, "-------------------------")
+        self.report({'INFO'}, "Bone" + my_m.finalBone)
+        self.report({'INFO'}, "Tail : [%.3f, %.3f, %.3f]" % (v[0], v[1], v[2]))
+        v = myArmature_pBones[my_m.finalBone].head
+        self.report({'INFO'}, "Head : [%.3f, %.3f, %.3f]" % (v[0], v[1], v[2]))
+        self.report({'INFO'}, "-------------------------")
+        
+        # 4 cases depending on the members.hasIK values
+        if my_m.hasIK:
+            if other_m.hasIK:
+                self.report({'INFO'}, "Case:  IK -> IK")
+                # ----------------- Origin Location ------------------
+                retargetLoc(action_ret, action_src, my_m.originBone, other_m.originBone, [0,0,0], 1)
+                
+                # ----------------- Controller Loc  ------------------
+                controllerOffset = [0,0,0]
+                #||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||
+                proportionalFactor = my_m.memberLenght / other_m.memberLenght
+                retargetLoc(action_ret, action_src, my_m.IK_controllerBone, other_m.IK_controllerBone, controllerOffset, proportionalFactor)
+                
+                # If both have a pole target:
+                self.report({'INFO'}, "My Pole: " + my_m.IK_poleBone)
+                self.report({'INFO'}, "Ot Pole: " + other_m.IK_poleBone)
+                if my_m.IK_poleBone != "" and other_m.IK_poleBone != "":
+                    retargetLoc(action_ret, action_src, my_m.IK_poleBone, other_m.IK_poleBone, controllerOffset, 1)
+
+                # ----------------- Controller Rot  ------------------
+                retargetRot_Quat(action_ret, action_src, my_m.IK_controllerBone, other_m.IK_controllerBone, quat())  #contRotationOffset)
+                myArmature_pBones[my_m.IK_controllerBone].rotation_mode = otherArmature_pBones[other_m.IK_controllerBone].rotation_mode 
+                
+                # ----------------- Final Rotation  ------------------
+                retargetRot_Quat(action_ret, action_src, my_m.finalBone, other_m.finalBone, quat())      #finalRotationOffset)
+                myArmature_pBones[my_m.finalBone].rotation_mode = otherArmature_pBones[other_m.finalBone].rotation_mode 
+                
+            else:
+                self.report({'INFO'}, "Case:  IK -> Seg")
+                self.report({'WARNING'}, "Trying to retarget from IK to non-IK members: not implemented yet")            #||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||
+                
+        else:
+            if other_m.hasIK:
+                self.report({'INFO'}, "Case: Seg -> IK")
+                self.report({'WARNING'}, "Trying to retarget from no-IK to IK members: not implemented yet")            #||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||
+                
+            else:
+                self.report({'INFO'}, "Case: Seg -> Seg")
+                
+                # Get bone names
+                my_m_origin = my_m.originBone
+                other_m_origin = other_m.originBone
+                
+                # Retarget Member origin location
+                retargetLoc(action_ret, action_src, my_m_origin, other_m_origin, [0,0,0], 1)
+                
+                # Retagert Member origin rotation
+                retargetRot(action_ret, action_src, my_m_origin, other_m_origin, quat())
+                
+                
+def retargetSingleBone(self, action_ret, action_src, myArmature_singles, otherArmature_singles, singleLinks):
+    for sbLink in singleLinks:
+        my_sb = myArmature_singles[sbLink.myMember_ID]
+        other_sb = otherArmature_singles[sbLink.otherMember_ID]
+        
+        # Get bone names
+        my_sb_bone = my_sb.string
+        other_sb_bone = other_sb.string
+        
+        # Retarget Member origin location
+        retargetLoc(action_ret, action_src, my_sb_bone, other_sb_bone, [0,0,0], 1)
+        
+        # Retagert Member origin rotation
+        retargetRot(action_ret, action_src, my_sb_bone, other_sb_bone, quat())
+                
+                
+
+#~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+
+
+
+def retargetAction(self, action, myArmature_obj, otherArmature_obj):
+    myArmature_data = myArmature_obj.data
+    otherArmature_data = otherArmature_obj.data
+    myArmature_pBones = myArmature_obj.pose.bones
+    otherArmature_pBones = otherArmature_obj.pose.bones        
+
+    action_ret = bpy.data.actions.new(myArmature_obj.name + "_" + action.name)
+
+    retargetLoc(action_ret, action, myArmature_data.aar_baseBone, otherArmature_data.aar_baseBone, [0,0,0], 1)
+    retargetRot(action_ret, action, myArmature_data.aar_baseBone, otherArmature_data.aar_baseBone, quat())
+    retargetSingleBone(self, action_ret, action, myArmature_data.aar_heads, otherArmature_data.aar_heads, myArmature_data.aar_head_links)
+    retargetSingleBone(self, action_ret, action, myArmature_data.aar_necks, otherArmature_data.aar_necks, myArmature_data.aar_neck_links)
+    
+    retargetMember(self, action_ret, action, myArmature_pBones, otherArmature_pBones, myArmature_data.aar_arms, otherArmature_data.aar_arms, myArmature_data.aar_arm_links)
+    retargetMember(self, action_ret, action, myArmature_pBones, otherArmature_pBones, myArmature_data.aar_legs, otherArmature_data.aar_legs, myArmature_data.aar_leg_links)
+    retargetMember(self, action_ret, action, myArmature_pBones, otherArmature_pBones, myArmature_data.aar_wings, otherArmature_data.aar_wings, myArmature_data.aar_wing_links)
+    retargetMember(self, action_ret, action, myArmature_pBones, otherArmature_pBones, myArmature_data.aar_tails, otherArmature_data.aar_tails, myArmature_data.aar_tail_links)
+
+
+
+    
+
+
+# ==============================================================================================================
+# ==============================================================================================================
+# ==============================================================================================================
+# ==============================================================================================================
+
     
     
     
@@ -186,6 +669,7 @@ class AAR_OT_CheckLabels(Operator):
 
     def execute(self, context):
         checkArmatureLabels(self, context.object)
+        context.object.data.aar_sourceLinked = False
         return {'FINISHED'}
     
     
@@ -209,8 +693,42 @@ class AAR_OT_CheckSourceLabels(Operator):
 
     def execute(self, context):
         checkArmatureLabels(self, context.object.data.aar_source)
+        context.object.data.aar_sourceLinked = False
         return {'FINISHED'}
 
+
+
+class AAR_OT_LinkArmatures(Operator):
+    bl_idname = "pose.aar_link_armatures"
+    bl_label = "Link Armatures"
+    bl_description = "Link the selected armature and its source armature"
+   
+
+    @classmethod
+    def poll(cls, context):
+        obj = context.object
+        if obj is not None:
+            if obj.type == "ARMATURE":
+                if obj.data.aar_source is not None:
+                    if obj.data.aar_labelChecked & obj.data.aar_source.data.aar_labelChecked & (not obj.data.aar_sourceLinked):
+                        return True
+        return False
+
+
+    def execute(self, context):
+        armature_this = context.object.data
+        armature_other = context.object.data.aar_source.data
+        
+        linkArmatureSingleBones(self, armature_this.aar_heads, armature_other.aar_heads, armature_this.aar_head_links)
+        linkArmatureSingleBones(self, armature_this.aar_necks, armature_other.aar_necks, armature_this.aar_neck_links)
+        
+        linkArmatureMembers(self, armature_this.aar_arms, armature_other.aar_arms, armature_this.aar_arm_links)
+        linkArmatureMembers(self, armature_this.aar_legs, armature_other.aar_legs, armature_this.aar_leg_links)
+        linkArmatureMembers(self, armature_this.aar_wings, armature_other.aar_wings, armature_this.aar_wing_links)
+        linkArmatureMembers(self, armature_this.aar_tails, armature_other.aar_tails, armature_this.aar_tail_links)
+        
+        armature_this.aar_sourceLinked = True
+        return {'FINISHED'}
 
 
 
@@ -226,12 +744,18 @@ class AAR_OT_Retarget(Operator):
         if obj is not None:
             if obj.type == "ARMATURE":
                 if obj.data.aar_source is not None:
-                    if obj.data.aar_labelChecked & obj.data.aar_source.data.aar_labelChecked:
+                    if obj.data.aar_labelChecked & obj.data.aar_source.data.aar_labelChecked & obj.data.aar_sourceLinked:
                         return True
         return False
 
 
     def execute(self, context):
+        actionProps = context.object.data.aar_actionsToCopy
+        bpy.context.area.ui_type = 'DOPESHEET'
+        bpy.context.space_data.ui_mode = 'ACTION'
+        for actProp in actionProps:
+            retargetAction(self, actProp.actionProp, context.object, context.object.data.aar_source)
+        bpy.context.area.ui_type = 'PROPERTIES'
         return {'FINISHED'}
     
     
@@ -239,4 +763,5 @@ class AAR_OT_Retarget(Operator):
 if __name__ == "__main__":
     bpy.utils.register_class(AAR_OT_CheckLabels)
     bpy.utils.register_class(AAR_OT_CheckSourceLabels)
+    bpy.utils.register_class(AAR_OT_LinkArmatures)
     bpy.utils.register_class(AAR_OT_Retarget)

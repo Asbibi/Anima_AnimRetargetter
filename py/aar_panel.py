@@ -105,6 +105,7 @@ class AAR_PT_Panel(Panel):
         layout.label(text="Retarget")
         col = layout.column()        
         col.operator("pose.aar_check_labels", text="Check Object Labels", icon="CHECKMARK")
+        col.operator("pose.aar_link_armatures", text="Link To Source Armature", icon="RESTRICT_INSTANCED_OFF")
         col.operator("pose.aar_retarget", text="Retarget", icon="IMPORT")
         
         
