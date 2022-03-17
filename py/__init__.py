@@ -34,7 +34,6 @@ from . aar_panel import *
 classes = (AAR_PROP_ActionListProperty,
             AAR_PROP_SingleBoneProperty,
             AAR_PROP_MemberProperty,
-            AAR_PROP_Quaternion,
             AAR_PROP_SingleBoneLink,
             AAR_PROP_MemberLink,
             AAR_PROP_GroupNameListProperty,
@@ -45,10 +44,12 @@ classes = (AAR_PROP_ActionListProperty,
             AAR_OT_RegisterAction,
             AAR_OT_UnregisterAction,
             AAR_OT_UnregisterAllActions,
+            AAR_OT_ResetCheckAndLinks,
             AAR_OT_CheckLabels,
             AAR_OT_CheckSourceLabels,
             AAR_OT_LinkArmatures,
             AAR_OT_Retarget,
+            AAR_OT_FullRetarget,
             AAR_PT_Panel)
 
 

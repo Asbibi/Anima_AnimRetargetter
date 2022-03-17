@@ -1,9 +1,8 @@
 import bpy
-#import mathutils
-#import math
 from bpy.types import Operator
 from math import sqrt
 from math import degrees as deg
+from mathutils import Matrix as mat
 from mathutils import Quaternion as quat
 from mathutils import Vector as vect
 
@@ -104,6 +103,7 @@ def checkStart_End(self, obj, member, member_end_List, member_start_List, member
         searchingBase = True
         numberBone_EndExcluded = 0
         memberLenght = curBone.length
+        memberVector = curBone.vector
         
         # --------------- Searching ----------------
         while curBone.parent is not None:
@@ -112,6 +112,7 @@ def checkStart_End(self, obj, member, member_end_List, member_start_List, member
                 if searchingStart:
                     numberBone_EndExcluded += 1
                     memberLenght += curBone.length
+                    memberVector += curBone.vector
                     if curBone.bone_group == member_start_group:
                         start_bone_name = curBone.name
                         searchingStart = False
@@ -142,11 +143,6 @@ def checkStart_End(self, obj, member, member_end_List, member_start_List, member
         if not searchingStart:
             member_start_List.append(start_bone_name)
             
-        # Compute the member lenght
-        start_pos = start_bone_Final.tail_local
-        end_pos = armature_bones[end_bone_name].tail_local
-        memberVector = end_pos - start_pos
-        
                 
         # Add Result to Data's Collection Property
         memberProp = memberCollectionProperty.add()
@@ -155,26 +151,11 @@ def checkStart_End(self, obj, member, member_end_List, member_start_List, member
         memberProp.finalBone = original_end_bone_name
         memberProp.IK_controllerBone = cont_bone_name if memberProp.hasIK else ""
         memberProp.IK_poleBone = pole_bone_name
-        memberProp.memberOrigin = start_pos
-        memberProp.memberVector = memberVector
-        memberProp.memberLenght = memberLenght   #norm(memberVector)
-        memberProp.numberBone = numberBone_EndExcluded
+        memberProp.memberOrigin = start_bone_Final.tail_local
+        memberProp.memberVector = armature_bones[memberProp.finalBone].tail_local - start_bone_Final.tail_local #memberVector
+        memberProp.memberLenght = memberLenght
         memberProp.finalBoneOrientation = armature_bones[memberProp.finalBone].vector.normalized()
-        if not searchingStart:
-            memberProp.originBoneOrientation = armature_bones[memberProp.originBone].vector.normalized()
-        if memberProp.hasIK:
-            memberProp.IK_contBoneOrientation = armature_bones[memberProp.IK_controllerBone].vector.normalized()
-            
-#        self.report({'INFO'}, "IK: " + str(memberProp.hasIK))
-#        self.report({'INFO'}, "Origin:  " + memberProp.originBone)
-#        self.report({'INFO'}, "Final:   " + memberProp.finalBone)
-#        self.report({'INFO'}, "Cont IK: " + memberProp.IK_controllerBone)
-        #self.report({'INFO'}, "Orient Ot: [%.3f, %.3f, %.3f]" % (memberProp.finalBoneOrientation[0],memberProp.finalBoneOrientation[1],memberProp.finalBoneOrientation[2]))
-        #self.report({'INFO'}, "Orient Ot: [%.3f, %.3f, %.3f]" % (memberProp.finalBoneOrientation[0],memberProp.finalBoneOrientation[1],memberProp.finalBoneOrientation[2]))
-        #self.report({'INFO'}, "Orient Ot: [%.3f, %.3f, %.3f]" % (memberProp.finalBoneOrientation[0],memberProp.finalBoneOrientation[1],memberProp.finalBoneOrientation[2]))
         
-        #self.report({'INFO'}, "Orientation norm: " + end_bone_name + " - " + str(norm(memberProp.finalBoneOrientation)))
-        #self.report({'INFO'}, "Origin of " + memberProp.originBone + ": [" + str(memberProp.memberOrigin[0]) + ", " + str(memberProp.memberOrigin[1]) + ", " + str(memberProp.memberOrigin[2]) + "]" )
     return False
 
 
@@ -430,7 +411,32 @@ def getDataPath_FCU(boneName, type):
     return "pose.bones[\"" + boneName + "\"]." + type
 
 
-def retargetLoc(my_action, other_action, my_mBone, other_mBone, offset, proportionalFactor):
+
+def getRotationOffset(fromOrientation, toOrientation):
+    frO_Vect = vect((fromOrientation[0], fromOrientation[1], fromOrientation[2]))
+    toO_Vect = vect((toOrientation[0], toOrientation[1], toOrientation[2]))    
+    return frO_Vect.rotation_difference(toO_Vect)
+
+
+
+
+def printVec(self, vec, name = ""):
+    self.report({'INFO'}, name + "[%.3f, %.3f, %.3f]" % (vec[0],vec[1],vec[2]))
+    
+def printVecDeg(self, vec, name = ""):
+    self.report({'INFO'}, name + "[%.3f, %.3f, %.3f]" % (deg(vec[0]),deg(vec[1]),deg(vec[2])))
+
+def printMat(self, matrix, name = "------"):
+    self.report({'INFO'}, "------" + name + "------")
+    self.report({'INFO'}, "|%.3f, %.3f, %.3f|" % (matrix[0][0],matrix[0][1],matrix[0][2]))
+    self.report({'INFO'}, "|%.3f, %.3f, %.3f|" % (matrix[1][0],matrix[1][1],matrix[1][2]))
+    self.report({'INFO'}, "|%.3f, %.3f, %.3f|" % (matrix[2][0],matrix[2][1],matrix[2][2]))
+    self.report({'INFO'}, "------------------")
+    
+
+
+
+def retargetLoc(my_action, other_action, my_mBone, other_mBone, proportionalFactor=1):
     my_mDataPath = getDataPath_FCU(my_mBone, "location")
     other_mDataPath = getDataPath_FCU(other_mBone, "location")
     
@@ -441,21 +447,195 @@ def retargetLoc(my_action, other_action, my_mBone, other_mBone, offset, proporti
         
         my_fcu = my_action.fcurves.new(data_path=my_mDataPath, index=axis, action_group=my_mBone)
         for kp in other_fcu.keyframe_points:
-            my_fcu.keyframe_points.insert(kp.co[0], offset[axis] + kp.co[1] * proportionalFactor)
+            my_fcu.keyframe_points.insert(kp.co[0], proportionalFactor * kp.co[1])
+            
             
 
-#def retargetLoc_reprop(my_action, other_action, my_mBone, other_mBone, offset, proportionalFactor, myOrigin, otherOrigin):
-#    my_mDataPath = getDataPath_FCU(my_mBone, "location")
-#    other_mDataPath = getDataPath_FCU(other_mBone, "location")
-#    
-#    for axis in range(0,3):
-#        other_fcu = other_action.fcurves.find(data_path=other_mDataPath, index=axis)        
-#        if other_fcu is None:
-#            continue
-#        
-#        my_fcu = my_action.fcurves.new(data_path=my_mDataPath, index=axis, action_group=my_mBone)
-#        for kp in other_fcu.keyframe_points:
-#            my_fcu.keyframe_points.insert(kp.co[0], offset[axis] + proportionalFactor * (kp.co[1] - otherOrigin[axis]) + myOrigin[axis])
+def retargetLoc_withRotationOffset(my_action, other_action, my_mBone, other_mBone, proportionalFactor, rotationOffset, fromMatrix, toMatrix):
+    my_mDataPath = getDataPath_FCU(my_mBone, "location")
+    other_mDataPath = getDataPath_FCU(other_mBone, "location")
+    
+    other_fcus = []    
+    for axis in range(0,3):
+        other_fcus.append(other_action.fcurves.find(data_path=other_mDataPath, index=axis))
+    
+    # Get frames
+    frames = []
+    for other_fcu in other_fcus:
+        if other_fcu is None:
+            continue
+        
+        for kp in other_fcu.keyframe_points:
+            if not(kp.co[0] in frames) :
+                frames.append(kp.co[0])
+    
+    # Get Pos
+    posValues = []
+    for f in frames:
+        v = []
+        for axis in range(0,3):
+            if other_fcus[axis] is None:
+                v.append(0)
+            else:
+                v.append(other_fcus[axis].evaluate(f) * proportionalFactor)
+        posValues.append(vect((v[0],v[1],v[2])))
+        
+    # Offset Pos
+    for i in range(len(posValues)):
+        v = fromMatrix @ posValues[i]
+        v.rotate(rotationOffset)
+        posValues[i] = toMatrix @ v
+            
+    # Set new keyframes
+    for axis in range(0,3):        
+        my_fcu = my_action.fcurves.new(data_path=my_mDataPath, index=axis, action_group=my_mBone)
+        for i in range(len(frames)):            
+            my_fcu.keyframe_points.insert(frames[i], posValues[i][axis])
+
+
+def retargetLoc_fromRotationEuler(my_action, other_action, my_mBone, other_mBone, offsetPosition, fromMatrix, toMatrix):
+    my_mDataPath = getDataPath_FCU(my_mBone, "location")
+    other_mDataPath = getDataPath_FCU(other_mBone, "rotation_euler")
+    
+    other_fcus = []    
+    for axis in range(0,3):
+        other_fcus.append(other_action.fcurves.find(data_path=other_mDataPath, index=axis))
+    
+    # Get frames
+    frames = []
+    for other_fcu in other_fcus:
+        if other_fcu is None:
+            continue
+        
+        for kp in other_fcu.keyframe_points:
+            if not(kp.co[0] in frames) :
+                frames.append(kp.co[0])
+    
+    # Get Euler Rots
+    rotValues = []
+    for f in frames:
+        r = []
+        for axis in range(0,3):
+            if other_fcus[axis] is None:
+                r.append(0)
+            else:
+                r.append(other_fcus[axis].evaluate(f))
+        rotValues.append(quat((r[0],r[1],r[2]), 'XYZ'))
+        
+    # Offset Pos
+    posValues = []
+    for i in range(len(posValues)):
+        v = fromMatrix @ offsetPosition
+        v.rotate(quatValues[i])
+        posValues.append(toMatrix @ v)
+            
+    # Set new keyframes
+    for axis in range(0,3):        
+        my_fcu = my_action.fcurves.new(data_path=my_mDataPath, index=axis, action_group=my_mBone)
+        for i in range(len(frames)):            
+            my_fcu.keyframe_points.insert(frames[i], posValues[i][axis])
+            
+            
+def retargetLoc_fromRotationQuat(my_action, other_action, my_mBone, other_mBone, offsetPosition, fromMatrix, toMatrix):
+    my_mDataPath = getDataPath_FCU(my_mBone, "location")
+    other_mDataPath = getDataPath_FCU(other_mBone, "rotation_quaternion")
+    q_identity = quat()
+    
+    other_fcus = []    
+    for axis in range(0,4):
+        other_fcus.append(other_action.fcurves.find(data_path=other_mDataPath, index=axis))
+    
+    # Get frames
+    frames = []
+    for other_fcu in other_fcus:
+        if other_fcu is None:
+            continue
+        
+        for kp in other_fcu.keyframe_points:
+            if not(kp.co[0] in frames) :
+                frames.append(kp.co[0])
+    
+    # Get Quats
+    quatValues = []
+    for f in frames:
+        q = []
+        for axis in range(0,4):
+            if other_fcus[axis] is None:
+                q.append(q_identity[axis])
+            else:
+                q.append(other_fcus[axis].evaluate(f))
+        quatValues.append(quat((q[0],q[1],q[2],q[3])))
+        
+    # Offset Pos
+    posValues = []
+    for i in range(len(quatValues)):
+        v = fromMatrix @ offsetPosition
+        v.rotate(quatValues[i])
+        v = toMatrix @ v
+        posValues.append(v)
+            
+    # Set new keyframes
+    for axis in range(0,3):        
+        my_fcu = my_action.fcurves.new(data_path=my_mDataPath, index=axis, action_group=my_mBone)
+        for i in range(len(frames)):            
+            my_fcu.keyframe_points.insert(frames[i], posValues[i][axis])
+
+
+def retargetLoc_fromRotation(my_action, other_action, my_mBone, other_mBone, offsetPosition, fromMatrix, toMatrix, useQuat):
+    if useQuat:
+        retargetLoc_fromRotationQuat(my_action, other_action, my_mBone, other_mBone, offsetPosition, fromMatrix, toMatrix)
+    else:
+        retargetLoc_fromRotationEuler(my_action, other_action, my_mBone, other_mBone, offsetPosition, fromMatrix, toMatrix)
+
+
+
+def retargetRot_fromLocation(my_action, other_action, my_mBone, other_mBone, initialDirection, fromMatrix):
+    my_mDataPath_quat = getDataPath_FCU(my_mBone, "rotation_quaternion")
+    my_mDataPath_euler = getDataPath_FCU(my_mBone, "rotation_euler")
+    other_mDataPath = getDataPath_FCU(other_mBone, "location")
+    q_identity = quat()
+    
+    other_fcus = []    
+    for axis in range(0,3):
+        other_fcus.append(other_action.fcurves.find(data_path=other_mDataPath, index=axis))
+    
+    # Get frames
+    frames = []
+    for other_fcu in other_fcus:
+        if other_fcu is None:
+            continue
+        
+        for kp in other_fcu.keyframe_points:
+            if not(kp.co[0] in frames) :
+                frames.append(kp.co[0])
+    
+    # Get Pos
+    posValues = []
+    for f in frames:
+        v = []
+        for axis in range(0,3):
+            if other_fcus[axis] is None:
+                v.append(0)
+            else:
+                v.append(other_fcus[axis].evaluate(f))
+        posValues.append(vect((v[0],v[1],v[2])))
+        
+    # Offset Pos
+    quatValues = []
+    for i in range(len(posValues)):
+        v = fromMatrix @ posValues[i]        
+        quatValues.append(getRotationOffset(initialDirection, v))
+            
+    # Set new keyframes
+    for axis in range(0,4):        
+        my_fcu = my_action.fcurves.new(data_path=my_mDataPath_quat, index=axis, action_group=my_mBone)
+        for i in range(len(frames)):            
+            my_fcu.keyframe_points.insert(frames[i], quatValues[i][axis])
+    for axis in range(0,3):        
+        my_fcu = my_action.fcurves.new(data_path=my_mDataPath_euler, index=axis, action_group=my_mBone)
+        for i in range(len(frames)):            
+            my_fcu.keyframe_points.insert(frames[i], quatValues[i].to_euler()[axis])
+
 
             
 def retargetRot_Euler(my_action, other_action, my_mBone, other_mBone, offset):
@@ -475,7 +655,7 @@ def retargetRot_Euler(my_action, other_action, my_mBone, other_mBone, offset):
 def retargetRot_Quat(my_action, other_action, my_mBone, other_mBone, offset):
     my_mDataPath = getDataPath_FCU(my_mBone, "rotation_quaternion")
     other_mDataPath = getDataPath_FCU(other_mBone, "rotation_quaternion")
-    q_identity = [1,0,0,0]
+    q_identity = quat()
     
     # Get original FCurves
     other_fcus = []    
@@ -505,13 +685,10 @@ def retargetRot_Quat(my_action, other_action, my_mBone, other_mBone, offset):
                 
     # Offset Quats
     for i in range(len(quatValues)):     
-        quatValues[i].rotate(offset)        
+        quatValues[i].rotate(offset)
         
     # Set new keyframes
-    for axis in range(0,4):
-        if other_fcus[axis] is None:
-            continue
-        
+    for axis in range(0,4):        
         my_fcu = my_action.fcurves.new(data_path=my_mDataPath, index=axis, action_group=my_mBone)
         for i in range(len(frames)):            
             my_fcu.keyframe_points.insert(frames[i], quatValues[i][axis])
@@ -520,58 +697,132 @@ def retargetRot_Quat(my_action, other_action, my_mBone, other_mBone, offset):
 def retargetRot(my_action, other_action, my_mBone, other_mBone, offset):
     retargetRot_Quat(my_action, other_action, my_mBone, other_mBone, offset)
     retargetRot_Euler(my_action, other_action, my_mBone, other_mBone, offset.to_euler())
-    
-    
-def getLocationOffset(pointToRotate, rotationPivot, rotationQuat):
-    v = pointToRotate - rotationPivot
-    v.rotate(rotationQuat)
-    return v + rotationPivot
-    
-def getRotationOffset(fromOrientation, toOrientation):
-    frO_Vect = vect((fromOrientation[0], fromOrientation[1], fromOrientation[2]))
-    toO_Vect = vect((toOrientation[0], toOrientation[1], toOrientation[2]))    
-    return frO_Vect.rotation_difference(toO_Vect)
 
 
 
-def retargetMember(self, action_ret, action_src, myArmature_pBones, otherArmature_pBones, myArmature_members, otherArmature_members, memberLinks):
+
+def retargetMember(self, action_ret, action_src, myArmature_pBones, otherArmature_pBones, myArmature_members, otherArmature_members, memberLinks, myArmature_rBones, otherArmature_rBones):
     for mLink in memberLinks:
+        self.report({'INFO'}, "=========================")
         my_m = myArmature_members[mLink.myMember_ID]
         other_m = otherArmature_members[mLink.otherMember_ID]
         
-        v = myArmature_pBones[my_m.finalBone].tail
-        self.report({'INFO'}, "-------------------------")
-        self.report({'INFO'}, "Bone" + my_m.finalBone)
-        self.report({'INFO'}, "Tail : [%.3f, %.3f, %.3f]" % (v[0], v[1], v[2]))
-        v = myArmature_pBones[my_m.finalBone].head
-        self.report({'INFO'}, "Head : [%.3f, %.3f, %.3f]" % (v[0], v[1], v[2]))
-        self.report({'INFO'}, "-------------------------")
+        
+        # ----------------- Origin Location ------------------
+        retargetLoc(action_ret, action_src, my_m.originBone, other_m.originBone)
+        
+        
+        # 4 cases depending on the members.hasIK values
+        if my_m.hasIK:
+            if other_m.hasIK:
+                self.report({'INFO'}, "Case:  IK -> IK")               
+                
+                # ----------------- Controller Loc  ------------------
+                proportionalFactor = my_m.memberLenght / other_m.memberLenght
+                retargetLoc(action_ret, action_src, my_m.IK_controllerBone, other_m.IK_controllerBone, proportionalFactor)
+                
+                # If both have a pole target:
+                if my_m.IK_poleBone != "" and other_m.IK_poleBone != "":
+                    retargetLoc(action_ret, action_src, my_m.IK_poleBone, other_m.IK_poleBone)
+
+
+                # ----------------- Controller Rot  ------------------
+                retargetRot(action_ret, action_src, my_m.IK_controllerBone, other_m.IK_controllerBone, quat())
+                myArmature_pBones[my_m.IK_controllerBone].rotation_mode = otherArmature_pBones[other_m.IK_controllerBone].rotation_mode 
+                
+                
+                # ----------------- Final Rotation  ------------------
+                retargetRot(action_ret, action_src, my_m.finalBone, other_m.finalBone, quat())
+                myArmature_pBones[my_m.finalBone].rotation_mode = otherArmature_pBones[other_m.finalBone].rotation_mode 
+                
+            else:
+                self.report({'INFO'}, "Case: Seg -> IK")
+                
+                # ------ Origin Rotation = Controller Location -------
+                originUseQuat = otherArmature_pBones[other_m.originBone].rotation_mode == 'QUATERNION'
+
+                my_mContMatrix = myArmature_rBones[my_m.IK_controllerBone].matrix_local
+                my_mOrigMatrix = myArmature_rBones[my_m.originBone].matrix_local
+                fromContMatrix = (my_mOrigMatrix.inverted_safe()) @ my_mContMatrix            
+                toContMatrix  = (my_mContMatrix.inverted_safe()) @ my_mOrigMatrix
+                retargetLoc_fromRotation(action_ret, action_src, my_m.IK_controllerBone, other_m.originBone, vect((0,0,0)), fromContMatrix, toContMatrix, originUseQuat)
+                                                
+                # ----------------- Final Rotation  ------------------
+                retargetRot(action_ret, action_src, my_m.finalBone, other_m.originBone, quat())
+                
+        else:
+            if other_m.hasIK:
+                self.report({'INFO'}, "Case:  IK -> Seg")
+                #self.report({'WARNING'}, "Trying to retarget from IK to non-IK members: not implemented yet")
+                
+                # ------ Controller Location = Origin Rotation -------
+                other_mContMatrix = otherArmature_rBones[other_m.IK_controllerBone].matrix_local
+                other_mOrigMatrix = otherArmature_rBones[other_m.originBone].matrix_local
+                fromContMatrix = (other_mOrigMatrix.inverted_safe()) @ other_mContMatrix
+                retargetRot_fromLocation(action_ret, action_src, my_m.originBone, other_m.IK_controllerBone, otherArmature_rBones[other_m.originBone].z_axis, fromContMatrix)
+                
+                
+            else:
+                self.report({'INFO'}, "Case: Seg -> Seg")
+                                
+                # ----------------- Origin Rotation ------------------
+                retargetRot(action_ret, action_src, my_m.originBone, other_m.originBone, quat())
+                
+                # ----------------- Final Rotation  ------------------
+                if my_m.finalBone != "":
+                    retargetRot(action_ret, action_src, my_m.finalBone, other_m.originBone, quat()) 
+                
+                
+                              
+        self.report({'INFO'}, "=========================")
+        
+        
+        
+def retargetMember_AlignToModel(self, action_ret, action_src, myArmature_pBones, otherArmature_pBones, myArmature_members, otherArmature_members, memberLinks, myArmature_rBones):
+    for mLink in memberLinks:
+        self.report({'INFO'}, "=========================")
+        my_m = myArmature_members[mLink.myMember_ID]
+        other_m = otherArmature_members[mLink.otherMember_ID]
+        
         
         # 4 cases depending on the members.hasIK values
         if my_m.hasIK:
             if other_m.hasIK:
                 self.report({'INFO'}, "Case:  IK -> IK")
+                
                 # ----------------- Origin Location ------------------
-                retargetLoc(action_ret, action_src, my_m.originBone, other_m.originBone, [0,0,0], 1)
+                retargetLoc(action_ret, action_src, my_m.originBone, other_m.originBone)
+                
                 
                 # ----------------- Controller Loc  ------------------
-                controllerOffset = [0,0,0]
-                #||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||
-                proportionalFactor = my_m.memberLenght / other_m.memberLenght
-                retargetLoc(action_ret, action_src, my_m.IK_controllerBone, other_m.IK_controllerBone, controllerOffset, proportionalFactor)
+                proportionalFactor = my_m.memberLenght / other_m.memberLenght                
+                rotationOffset = getRotationOffset(my_m.memberVector, other_m.memberVector)
+                
+                my_mContMatrix = myArmature_rBones[my_m.IK_controllerBone].matrix_local
+                my_mOrigMatrix = myArmature_rBones[my_m.originBone].matrix_local
+                fromContMatrix = (my_mOrigMatrix.inverted_safe()) @ my_mContMatrix            
+                toContMatrix  = (my_mContMatrix.inverted_safe()) @ my_mOrigMatrix
+                
+                retargetLoc_withRotationOffset(action_ret, action_src, my_m.IK_controllerBone, other_m.IK_controllerBone, proportionalFactor, rotationOffset, fromContMatrix, toContMatrix)
                 
                 # If both have a pole target:
-                self.report({'INFO'}, "My Pole: " + my_m.IK_poleBone)
-                self.report({'INFO'}, "Ot Pole: " + other_m.IK_poleBone)
                 if my_m.IK_poleBone != "" and other_m.IK_poleBone != "":
-                    retargetLoc(action_ret, action_src, my_m.IK_poleBone, other_m.IK_poleBone, controllerOffset, 1)
+                    my_mPoleMatrix = myArmature_rBones[my_m.IK_poleBone].matrix_local   
+                    fromPoleMatrix = (my_mOrigMatrix.inverted_safe()) @ my_mPoleMatrix         
+                    toPoleMatrix  = (my_mPoleMatrix.inverted_safe()) @ my_mOrigMatrix
+                                    
+                    retargetLoc_withRotationOffset(action_ret, action_src, my_m.IK_poleBone, other_m.IK_poleBone, 1, rotationOffset, fromPoleMatrix, toPoleMatrix)
+                    
 
                 # ----------------- Controller Rot  ------------------
-                retargetRot_Quat(action_ret, action_src, my_m.IK_controllerBone, other_m.IK_controllerBone, quat())  #contRotationOffset)
+                axis, angle = rotationOffset.to_axis_angle()
+                axis.rotate((my_mContMatrix.inverted_safe()).to_quaternion())
+                retargetRot(action_ret, action_src, my_m.IK_controllerBone, other_m.IK_controllerBone, quat(axis, angle))
                 myArmature_pBones[my_m.IK_controllerBone].rotation_mode = otherArmature_pBones[other_m.IK_controllerBone].rotation_mode 
                 
+                
                 # ----------------- Final Rotation  ------------------
-                retargetRot_Quat(action_ret, action_src, my_m.finalBone, other_m.finalBone, quat())      #finalRotationOffset)
+                retargetRot(action_ret, action_src, my_m.finalBone, other_m.finalBone, quat())
                 myArmature_pBones[my_m.finalBone].rotation_mode = otherArmature_pBones[other_m.finalBone].rotation_mode 
                 
             else:
@@ -591,10 +842,13 @@ def retargetMember(self, action_ret, action_src, myArmature_pBones, otherArmatur
                 other_m_origin = other_m.originBone
                 
                 # Retarget Member origin location
-                retargetLoc(action_ret, action_src, my_m_origin, other_m_origin, [0,0,0], 1)
+                retargetLoc(action_ret, action_src, my_m_origin, other_m_origin)
                 
                 # Retagert Member origin rotation
-                retargetRot(action_ret, action_src, my_m_origin, other_m_origin, quat())
+                retargetRot(action_ret, action_src, my_m_origin, other_m_origin, quat())                
+        self.report({'INFO'}, "=========================")
+        
+        
                 
                 
 def retargetSingleBone(self, action_ret, action_src, myArmature_singles, otherArmature_singles, singleLinks):
@@ -607,7 +861,7 @@ def retargetSingleBone(self, action_ret, action_src, myArmature_singles, otherAr
         other_sb_bone = other_sb.string
         
         # Retarget Member origin location
-        retargetLoc(action_ret, action_src, my_sb_bone, other_sb_bone, [0,0,0], 1)
+        retargetLoc(action_ret, action_src, my_sb_bone, other_sb_bone)
         
         # Retagert Member origin rotation
         retargetRot(action_ret, action_src, my_sb_bone, other_sb_bone, quat())
@@ -623,20 +877,26 @@ def retargetAction(self, action, myArmature_obj, otherArmature_obj):
     myArmature_data = myArmature_obj.data
     otherArmature_data = otherArmature_obj.data
     myArmature_pBones = myArmature_obj.pose.bones
-    otherArmature_pBones = otherArmature_obj.pose.bones        
+    myArmature_rBones = myArmature_data.bones
+    otherArmature_pBones = otherArmature_obj.pose.bones 
+    otherArmature_rBones = otherArmature_data.bones       
+
+
+#    if myArmature_data.pose_position != 'REST':
+#        self.report({'ERROR'}, "Set the armature to REST pose mode before retargetting.")
+#        return
 
     action_ret = bpy.data.actions.new(myArmature_obj.name + "_" + action.name)
-
-    retargetLoc(action_ret, action, myArmature_data.aar_baseBone, otherArmature_data.aar_baseBone, [0,0,0], 1)
+    
+    retargetLoc(action_ret, action, myArmature_data.aar_baseBone, otherArmature_data.aar_baseBone)
     retargetRot(action_ret, action, myArmature_data.aar_baseBone, otherArmature_data.aar_baseBone, quat())
     retargetSingleBone(self, action_ret, action, myArmature_data.aar_heads, otherArmature_data.aar_heads, myArmature_data.aar_head_links)
     retargetSingleBone(self, action_ret, action, myArmature_data.aar_necks, otherArmature_data.aar_necks, myArmature_data.aar_neck_links)
     
-    retargetMember(self, action_ret, action, myArmature_pBones, otherArmature_pBones, myArmature_data.aar_arms, otherArmature_data.aar_arms, myArmature_data.aar_arm_links)
-    retargetMember(self, action_ret, action, myArmature_pBones, otherArmature_pBones, myArmature_data.aar_legs, otherArmature_data.aar_legs, myArmature_data.aar_leg_links)
-    retargetMember(self, action_ret, action, myArmature_pBones, otherArmature_pBones, myArmature_data.aar_wings, otherArmature_data.aar_wings, myArmature_data.aar_wing_links)
-    retargetMember(self, action_ret, action, myArmature_pBones, otherArmature_pBones, myArmature_data.aar_tails, otherArmature_data.aar_tails, myArmature_data.aar_tail_links)
-
+    retargetMember(self, action_ret, action, myArmature_pBones, otherArmature_pBones, myArmature_data.aar_arms, otherArmature_data.aar_arms, myArmature_data.aar_arm_links, myArmature_rBones, otherArmature_rBones)
+    retargetMember(self, action_ret, action, myArmature_pBones, otherArmature_pBones, myArmature_data.aar_legs, otherArmature_data.aar_legs, myArmature_data.aar_leg_links, myArmature_rBones, otherArmature_rBones)
+    retargetMember(self, action_ret, action, myArmature_pBones, otherArmature_pBones, myArmature_data.aar_wings, otherArmature_data.aar_wings, myArmature_data.aar_wing_links, myArmature_rBones, otherArmature_rBones)
+    retargetMember(self, action_ret, action, myArmature_pBones, otherArmature_pBones, myArmature_data.aar_tails, otherArmature_data.aar_tails, myArmature_data.aar_tail_links, myArmature_rBones, otherArmature_rBones)
 
 
     
@@ -648,7 +908,27 @@ def retargetAction(self, action, myArmature_obj, otherArmature_obj):
 # ==============================================================================================================
 
     
-    
+class AAR_OT_ResetCheckAndLinks(Operator):
+    bl_idname = "pose.aar_reset_checks_links"
+    bl_label = "Reset Checks Links"
+    bl_description = "Reset Checks and links of armature's bones and its source's bones"
+   
+
+    @classmethod
+    def poll(cls, context):
+        obj = context.object
+        if obj is not None:
+            if obj.type == "ARMATURE":
+                if obj.data.aar_source is not None:
+                    return True
+        return False
+
+
+    def execute(self, context):
+        context.object.data.aar_sourceLinked = False
+        context.object.data.aar_labelChecked = False
+        context.object.data.aar_source.data.aar_labelChecked = False
+        return {'FINISHED'}   
     
 
 class AAR_OT_CheckLabels(Operator):
@@ -758,10 +1038,40 @@ class AAR_OT_Retarget(Operator):
         bpy.context.area.ui_type = 'PROPERTIES'
         return {'FINISHED'}
     
+
+
+
+class AAR_OT_FullRetarget(Operator):
+    bl_idname = "pose.aar_retarget_full"
+    bl_label = "Full Retarget Actions Process"
+    bl_description = "Retarget the selected actions from the source armature to the active armature, including chekcing and linking steps"
+   
+
+    @classmethod
+    def poll(cls, context):
+        obj = context.object
+        if obj is not None:
+            if obj.type == "ARMATURE":
+                if obj.data.aar_source is not None:
+                    return True
+        return False
+
+
+    def execute(self, context):
+        bpy.ops.pose.aar_reset_checks_links('EXEC_DEFAULT')
+        bpy.ops.pose.aar_check_labels('EXEC_DEFAULT')
+        bpy.ops.pose.aar_check_source_labels('EXEC_DEFAULT')
+        bpy.ops.pose.aar_link_armatures('EXEC_DEFAULT')
+        bpy.ops.pose.aar_retarget('EXEC_DEFAULT')
+        
+        return {'FINISHED'}
+    
     
 
 if __name__ == "__main__":
+    bpy.utils.register_class(AAR_OT_ResetCheckAndLinks)
     bpy.utils.register_class(AAR_OT_CheckLabels)
     bpy.utils.register_class(AAR_OT_CheckSourceLabels)
     bpy.utils.register_class(AAR_OT_LinkArmatures)
     bpy.utils.register_class(AAR_OT_Retarget)
+    bpy.utils.register_class(AAR_OT_FullRetarget)

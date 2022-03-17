@@ -19,6 +19,8 @@ class AAR_PT_Panel(Panel):
     bl_region_type = "WINDOW"
     bl_context = "data"
     bl_category = "Animation"
+    
+    #aar_retargetStepByStep = bpy.props.BoolProperty(default=False)
         
 
     @classmethod
@@ -30,10 +32,10 @@ class AAR_PT_Panel(Panel):
 
 
     def draw(self, context):
-        label_name = ["Base", "Head", "Neck", "Arm Start", "Arm End", "Leg Start", "Leg End", "Wing Start", "Wing End", "Tail Start", "Tail End"]
-        label_normal = [[1,0.4,0.3],[1,0,0.4],[1,0.6,0.8],[0.5,0.8,1],[0,0.8,1],[0.5,0.6,1],[0,0.2,1],[0.7,1,0.8],[0,1,0.3],[0.8,0.5,1],[0.6,0,1]]
-        label_select = [[0.75,0.75,0.75],[0.75,0.75,0.75],[0.75,0.75,0.75],[0.75,0.75,0.75],[0.75,0.75,0.75],[0.75,0.75,0.75],[0.75,0.75,0.75],[0.75,0.75,0.75],[0.75,0.75,0.75],[0.75,0.75,0.75],[0.75,0.75,0.75]]
-        label_active = [[1,1,1],[1,1,1],[1,1,1],[1,1,1],[1,1,1],[1,1,1],[1,1,1],[1,1,1],[1,1,1],[1,1,1],[1,1,1]]
+        label_name = ["Base", "Body", "Head", "Neck", "Arm Start", "Arm End", "Leg Start", "Leg End", "Wing Start", "Wing End", "Tail Start", "Tail End"]
+        label_normal = [[1,0.4,0.3],[1,0.8,0.15],[1,0,0.4],[1,0.6,0.8],[0.5,0.8,1],[0,0.8,1],[0.5,0.6,1],[0,0.2,1],[0.7,1,0.8],[0,1,0.3],[0.8,0.5,1],[0.6,0,1]]
+        label_select = [0.75,0.75,0.75]
+        label_active = [1,1,1]
         
         
         layout = self.layout
@@ -79,8 +81,8 @@ class AAR_PT_Panel(Panel):
             op = col.operator("pose.aar_label_bone", text="Label", icon="ADD")
             op.aar_group = "AAR_" + label_name[i]
             op.aar_colorNormal = label_normal[i]
-            op.aar_colorSelect = label_select[i]
-            op.aar_colorActive = label_active[i]
+            op.aar_colorSelect = label_select
+            op.aar_colorActive = label_active
             
             col = row.column()
             op = col.operator("pose.aar_unlabel_bone", text="Unlabel", icon="REMOVE")
@@ -102,11 +104,20 @@ class AAR_PT_Panel(Panel):
         
         
         layout.separator()
-        layout.label(text="Retarget")
-        col = layout.column()        
-        col.operator("pose.aar_check_labels", text="Check Object Labels", icon="CHECKMARK")
-        col.operator("pose.aar_link_armatures", text="Link To Source Armature", icon="RESTRICT_INSTANCED_OFF")
-        col.operator("pose.aar_retarget", text="Retarget", icon="IMPORT")
+        
+        row = layout.row()
+        row.label(text="Retarget")
+        row.prop(context.scene, "aar_retargetStepByStep", text="Step by step", toggle =1, icon="LONGDISPLAY")
+        
+        if context.scene.aar_retargetStepByStep:
+            col = layout.column()        
+            col.operator("pose.aar_reset_checks_links", text="Reset Checks & Links", icon="UNLINKED")
+            col.operator("pose.aar_check_labels", text="Check Object Labels", icon="CHECKMARK")
+            col.operator("pose.aar_link_armatures", text="Link To Source Armature", icon="RESTRICT_INSTANCED_OFF")
+            col.operator("pose.aar_retarget", text="Retarget", icon="IMPORT")
+        
+        else:
+            layout.operator("pose.aar_retarget_full", text="Retarget (Full Process)", icon="IMPORT")
         
         
         
