@@ -25,6 +25,7 @@ def AAR_RegisterProps():
     bpy.types.Armature.aar_baseBone = bpy.props.StringProperty(default="")
     bpy.types.Armature.aar_heads = bpy.props.CollectionProperty(type=AAR_PROP_SingleBoneProperty)
     bpy.types.Armature.aar_necks = bpy.props.CollectionProperty(type=AAR_PROP_SingleBoneProperty)
+    bpy.types.Armature.aar_bodies = bpy.props.CollectionProperty(type=AAR_PROP_SingleBoneProperty)
     
     bpy.types.Armature.aar_arms = bpy.props.CollectionProperty(type=AAR_PROP_MemberProperty)
     bpy.types.Armature.aar_legs = bpy.props.CollectionProperty(type=AAR_PROP_MemberProperty)
@@ -33,6 +34,7 @@ def AAR_RegisterProps():
     
     bpy.types.Armature.aar_head_links = bpy.props.CollectionProperty(type=AAR_PROP_SingleBoneLink)
     bpy.types.Armature.aar_neck_links = bpy.props.CollectionProperty(type=AAR_PROP_SingleBoneLink)
+    bpy.types.Armature.aar_body_links = bpy.props.CollectionProperty(type=AAR_PROP_SingleBoneLink)
     
     bpy.types.Armature.aar_arm_links = bpy.props.CollectionProperty(type=AAR_PROP_MemberLink)
     bpy.types.Armature.aar_leg_links = bpy.props.CollectionProperty(type=AAR_PROP_MemberLink)
@@ -55,6 +57,7 @@ def AAR_DelProps():
     del bpy.types.Armature.aar_baseBone
     del bpy.types.Armature.aar_heads
     del bpy.types.Armature.aar_necks
+    del bpy.types.Armature.aar_bodies
     
     del bpy.types.Armature.aar_arms
     del bpy.types.Armature.aar_legs
@@ -63,6 +66,7 @@ def AAR_DelProps():
     
     del bpy.types.Armature.aar_head_links
     del bpy.types.Armature.aar_neck_links
+    del bpy.types.Armature.aar_body_links
     
     del bpy.types.Armature.aar_arm_links
     del bpy.types.Armature.aar_leg_links

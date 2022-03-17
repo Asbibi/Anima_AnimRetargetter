@@ -215,6 +215,30 @@ def checkHeads_Necks(self, armature, bones, head_Group, neck_Group, base_bone_na
         n_prop.string = head
         n_prop.position = bones[head].tail_local
         
+    return False
+        
+        
+        
+def checkBodies(self, armature, bones, bodyNames, bodyGroup, base_bone_name):
+    # Check body is related to base
+    for body in bodyNames:
+        curBone = bones[body]
+        searchingBase = True
+        while (curBone.parent is not None) and (searchingBase):
+            curBone = curBone.parent
+            if curBone.name == base_bone_name:
+               searchingBase = False
+               
+        if searchingBase:
+            self.report({'ERROR'}, "Body Bone '" + body + "' isn't parented to Base Bone '" + base_bone_name + "'.")
+            return True
+        b_prop = armature.aar_bodies.add()
+        b_prop.string = body
+        b_prop.position = bones[body].tail_local
+    
+    # TODO --- Check if all bodies are in chain
+    
+    return False
         
 
 
@@ -235,17 +259,19 @@ def checkArmatureLabels(self, obj):
     base_Name = ""
     base_found = False
     
+    body_Group = bone_groups["AAR_Body"] if "AAR_Body" in bone_groups else None
+    body_Names = []
     head_Group = bone_groups["AAR_Head"] if "AAR_Head" in bone_groups else None
     head_Names = []
     neck_Group = bone_groups["AAR_Neck"] if "AAR_Neck" in bone_groups else None
     neck_Names = []
-    arm_Group = bone_groups["AAR_Arm End"] if "AAR_Arm End" in bone_groups else None
+    arm_Group = bone_groups["AAR_Arm_Final"] if "AAR_Arm_Final" in bone_groups else None
     arm_Names = []
-    leg_Group = bone_groups["AAR_Leg End"] if "AAR_Leg End" in bone_groups else None
+    leg_Group = bone_groups["AAR_Leg_Final"] if "AAR_Leg_Final" in bone_groups else None
     leg_Names = []
-    wing_Group = bone_groups["AAR_Wing End"] if "AAR_Wing End" in bone_groups else None
+    wing_Group = bone_groups["AAR_Wing_Final"] if "AAR_Wing_Final" in bone_groups else None
     wing_Names = []
-    tail_Group = bone_groups["AAR_Tail End"] if "AAR_Tail End" in bone_groups else None
+    tail_Group = bone_groups["AAR_Tail_Final"] if "AAR_Tail_Final" in bone_groups else None
     tail_Names = []
     
     
@@ -268,6 +294,8 @@ def checkArmatureLabels(self, obj):
             
         # ------------------------------------------
         
+        elif b.bone_group == body_Group:
+            body_Names.append(b.name)
         elif b.bone_group == head_Group:
             head_Names.append(b.name)
         elif b.bone_group == neck_Group:
@@ -302,6 +330,11 @@ def checkArmatureLabels(self, obj):
     # ----------------------------------------------
     
     
+    # --------------- Check Bodies  ----------------
+    if checkBodies(self, armature, armature.bones, body_Names, body_Group, base_Name):
+        obj.data.aar_labelChecked = False
+        return
+    
     # ------------ Check Heads & Necks -------------
     if checkHeads_Necks(self, armature, armature.bones, head_Group, neck_Group, base_Name, head_Names, neck_Names):
         obj.data.aar_labelChecked = False
@@ -309,25 +342,25 @@ def checkArmatureLabels(self, obj):
     
     # ----------------- Check Arm ------------------
     arm_Names_Combine = []
-    if checkStart_End(self, obj, "Arm", arm_Names, arm_Names_Combine, bone_groups["AAR_Arm Start"] if "AAR_Arm Start" in bone_groups else None, pose_bones, armature.bones, base_Name, armature.aar_arms):
+    if checkStart_End(self, obj, "Arm", arm_Names, arm_Names_Combine, bone_groups["AAR_Arm_Origin"] if "AAR_Arm_Origin" in bone_groups else None, pose_bones, armature.bones, base_Name, armature.aar_arms):
         obj.data.aar_labelChecked = False
         return
     
     # ----------------- Check Leg ------------------
     leg_Names_Combine = []
-    if checkStart_End(self, obj, "Leg", leg_Names, leg_Names_Combine, bone_groups["AAR_Leg Start"] if "AAR_Leg Start" in bone_groups else None, pose_bones, armature.bones, base_Name, armature.aar_legs):
+    if checkStart_End(self, obj, "Leg", leg_Names, leg_Names_Combine, bone_groups["AAR_Leg_Origin"] if "AAR_Leg_Origin" in bone_groups else None, pose_bones, armature.bones, base_Name, armature.aar_legs):
         obj.data.aar_labelChecked = False
         return
     
     # ----------------- Check Wing -----------------
     wing_Names_Combine = []
-    if checkStart_End(self, obj, "Wing", wing_Names, wing_Names_Combine, bone_groups["AAR_Wing Start"] if "AAR_Wing Start" in bone_groups else None, pose_bones, armature.bones, base_Name, armature.aar_wings):
+    if checkStart_End(self, obj, "Wing", wing_Names, wing_Names_Combine, bone_groups["AAR_Wing_Origin"] if "AAR_Wing_Origin" in bone_groups else None, pose_bones, armature.bones, base_Name, armature.aar_wings):
         obj.data.aar_labelChecked = False
         return
     
     # ----------------- Check Tail -----------------
     tail_Names_Combine = []
-    if checkStart_End(self, obj, "Tail", tail_Names, tail_Names_Combine, bone_groups["AAR_Tail Start"] if "AAR_Tail Start" in bone_groups else None, pose_bones, armature.bones, base_Name, armature.aar_tails):
+    if checkStart_End(self, obj, "Tail", tail_Names, tail_Names_Combine, bone_groups["AAR_Tail_Origin"] if "AAR_Tail_Origin" in bone_groups else None, pose_bones, armature.bones, base_Name, armature.aar_tails):
         obj.data.aar_labelChecked = False
         return
     
@@ -890,6 +923,7 @@ def retargetAction(self, action, myArmature_obj, otherArmature_obj):
     
     retargetLoc(action_ret, action, myArmature_data.aar_baseBone, otherArmature_data.aar_baseBone)
     retargetRot(action_ret, action, myArmature_data.aar_baseBone, otherArmature_data.aar_baseBone, quat())
+    retargetSingleBone(self, action_ret, action, myArmature_data.aar_bodies, otherArmature_data.aar_bodies, myArmature_data.aar_body_links)
     retargetSingleBone(self, action_ret, action, myArmature_data.aar_heads, otherArmature_data.aar_heads, myArmature_data.aar_head_links)
     retargetSingleBone(self, action_ret, action, myArmature_data.aar_necks, otherArmature_data.aar_necks, myArmature_data.aar_neck_links)
     
@@ -999,6 +1033,7 @@ class AAR_OT_LinkArmatures(Operator):
         armature_this = context.object.data
         armature_other = context.object.data.aar_source.data
         
+        linkArmatureSingleBones(self, armature_this.aar_bodies, armature_other.aar_bodies, armature_this.aar_body_links)
         linkArmatureSingleBones(self, armature_this.aar_heads, armature_other.aar_heads, armature_this.aar_head_links)
         linkArmatureSingleBones(self, armature_this.aar_necks, armature_other.aar_necks, armature_this.aar_neck_links)
         
